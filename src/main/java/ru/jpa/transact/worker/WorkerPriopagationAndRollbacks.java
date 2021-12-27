@@ -18,56 +18,47 @@ import static org.springframework.transaction.annotation.Propagation.SUPPORTS;
 
 @Service
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
-public class WorkerValueAndRollbacks {
+public class WorkerPriopagationAndRollbacks {
 
     private final FirstRepository firstRepository;
     private final SecondRepository secondRepository;
     private final ApplicationContext context;
 
-    /////////
+    //// "dontrollbackon" will be recorded despite throw being invoked
     @Transactional(noRollbackFor = ArithmeticException.class)
     public void saveDontRollbackOn() {
-        FirstTab firstTab = new FirstTab();
-        firstTab.setName("dontrollbackon");
-        firstRepository.save(firstTab);
+        saveToFirst("dontrollbackon");
         throw new ArithmeticException();
     }
 
-    /////////
+    //////  "nevertransaction" will be recorded  because there is no transaction
     @Transactional(propagation = NEVER)  // without transaction
     public void saveWithoutTransaction() {
-        FirstTab firstTab = new FirstTab();
-        firstTab.setName("nevertransaction");
-        firstRepository.save(firstTab);
+        saveToFirst("nevertransaction");
         throw new ArithmeticException();
     }
 
     /////////
-    @Transactional(propagation = REQUIRED) //default
+    @Transactional(propagation = REQUIRED) // nothing will be recordec
     public void saveOrdinary() {
-        FirstTab firstTab = new FirstTab();
-        firstTab.setName("ordinary");
-        firstRepository.save(firstTab);
-
+        saveToFirst("ordinary");
         throw new ArithmeticException();
     }
 
     /////////
-    @Transactional(propagation = NEVER)
+    @Transactional(propagation = NEVER) // neverfordescendant will be record because no transaction
     public void neverThenSupports() {
-        FirstTab firstTab = new FirstTab();
-        firstTab.setName("neverfordescendant");
-        firstRepository.save(firstTab);
-        descendantSupports();
+        saveToFirst("neverfordescendant");
+        getAnotherBean().descendantSupports();
     }
 
     @Transactional(propagation = SUPPORTS)
     //  an active transaction exists. If a transaction exists, then the existing transaction will be used.
     // If there isn't a transaction, it is executed non-transactional:
+
+    // secondtab will be recorded because there is no tr
     public void descendantSupports() {
-        SecondTab firstTab = new SecondTab();
-        firstTab.setName("secondtab");
-        secondRepository.save(firstTab);
+        saveToSecond("secondtab");
         throw new ArithmeticException();
     }
 
@@ -90,11 +81,32 @@ public class WorkerValueAndRollbacks {
         throw new ArithmeticException();
     }
 
-    private WorkerValueAndRollbacks getAnotherBean()
+    ////
+    @Transactional(readOnly = true)
+    public void readOnly() {
+        saveToSecond("readonly");
+//        throw new ArithmeticException();
+    }
+
+
+    private WorkerPriopagationAndRollbacks getAnotherBean()
     {
-        return context.getBean(WorkerValueAndRollbacks.class);
+        return context.getBean(WorkerPriopagationAndRollbacks.class);
 
     }
+
+    private void saveToFirst(String name) {
+        FirstTab firstTab = new FirstTab();
+        firstTab.setName(name);
+        firstRepository.save(firstTab);
+    }
+
+    private void saveToSecond(String name) {
+        SecondTab secondTab = new SecondTab();
+        secondTab.setName(name);
+        secondRepository.save(secondTab);
+    }
+
 
 }
 
