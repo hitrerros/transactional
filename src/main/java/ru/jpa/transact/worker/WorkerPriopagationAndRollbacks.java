@@ -7,28 +7,46 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.jpa.transact.entity.FirstTab;
 import ru.jpa.transact.entity.SecondTab;
+import ru.jpa.transact.exception.MyException;
 import ru.jpa.transact.repository.FirstRepository;
 import ru.jpa.transact.repository.SecondRepository;
 
+import static org.springframework.transaction.annotation.Propagation.MANDATORY;
+import static org.springframework.transaction.annotation.Propagation.NESTED;
 import static org.springframework.transaction.annotation.Propagation.NEVER;
 import static org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED;
 import static org.springframework.transaction.annotation.Propagation.REQUIRED;
+import static org.springframework.transaction.annotation.Propagation.REQUIRES_NEW;
 import static org.springframework.transaction.annotation.Propagation.SUPPORTS;
 
 
-@Service
+@Service(value = "root")
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
 public class WorkerPriopagationAndRollbacks {
 
-    private final FirstRepository firstRepository;
-    private final SecondRepository secondRepository;
-    private final ApplicationContext context;
+    protected final FirstRepository firstRepository;
+    protected final SecondRepository secondRepository;
+    protected final ApplicationContext context;
 
     //// "dontrollbackon" will be recorded despite throw being invoked
-    @Transactional(noRollbackFor = ArithmeticException.class)
-    public void saveDontRollbackOn() {
-        saveToFirst("dontrollbackon");
+    @Transactional(noRollbackFor = ArithmeticException.class)  // run-time exception
+    public void noRollbackFor() {
+        saveToFirst("norollbackFor");
         throw new ArithmeticException();
+    }
+
+    //// "rollback for "
+    @Transactional(rollbackFor = MyException.class)  // checked exception
+    public void rollbackFor() throws MyException {
+        saveToFirst("rollbackFor");
+        throw new MyException();
+    }
+
+    //// "rollback for "
+    @Transactional  // checked exception will be recorded
+    public void checkedException() throws MyException {
+        saveToFirst("checked_exception");
+        throw new MyException();
     }
 
     //////  "nevertransaction" will be recorded  because there is no transaction
@@ -81,32 +99,90 @@ public class WorkerPriopagationAndRollbacks {
         throw new ArithmeticException();
     }
 
-    ////
+    //// readOnly = true nothing happens
     @Transactional(readOnly = true)
     public void readOnly() {
         saveToSecond("readonly");
 //        throw new ArithmeticException();
     }
 
+    //// propagation = MANDATORY
+    @Transactional(propagation = MANDATORY)
+    public void mandatory() {
+        saveToFirst("mandatory");
+    }
 
-    private WorkerPriopagationAndRollbacks getAnotherBean()
-    {
-        return context.getBean(WorkerPriopagationAndRollbacks.class);
+
+    // required then never  rollbacks required
+    @Transactional(propagation = REQUIRED)
+    public void requiredThenNever() {
+        saveToFirst("required_then_never");
+        getAnotherBean().requiredThenNever2();
+    }
+
+    @Transactional(propagation = NEVER)
+    public void requiredThenNever2() {
+        saveToSecond("required_then_never");
 
     }
 
-    private void saveToFirst(String name) {
+    // required then never doesn't rollback because itself inkoved, never is ignored
+    @Transactional(propagation = REQUIRED)
+    public void requiredThenNeverItself() {
+        saveToFirst("required_then_never_itself");
+        requiredThenNever2Itself();
+    }
+
+    @Transactional(propagation = NEVER)
+    public void requiredThenNever2Itself() {
+        saveToSecond("required_then_itself_ignored");
+
+    }
+
+
+    ////////////////////// REQUIRED + NESTED
+    @Transactional(propagation = REQUIRED)
+    public void requiredForNested() {
+        saveToFirst("required_then_nested");
+        getAnotherBean().invokeNested();
+        throw new ArithmeticException();
+    }
+
+    @Transactional(propagation = NESTED)
+    public void invokeNested() {
+        saveToSecond("required_nested");
+    }
+
+
+    ////////////////////// REQUIRED + NESTED
+    @Transactional(propagation = REQUIRED)
+    public void requiredThenRequiredNew() {
+        saveToFirst("required_then_required_new");
+        getAnotherBean().invokeRequiredNew();
+        throw new ArithmeticException();
+    }
+
+    @Transactional(propagation = REQUIRES_NEW)
+    public void invokeRequiredNew() {
+        saveToSecond("second_requires_new");
+    }
+
+
+    private WorkerPriopagationAndRollbacks getAnotherBean() {
+        return context.getBean(WorkerPriopagationAndRollbacks.class);
+    }
+
+    protected void saveToFirst(String name) {
         FirstTab firstTab = new FirstTab();
         firstTab.setName(name);
         firstRepository.save(firstTab);
     }
 
-    private void saveToSecond(String name) {
+    protected void saveToSecond(String name) {
         SecondTab secondTab = new SecondTab();
         secondTab.setName(name);
         secondRepository.save(secondTab);
     }
-
 
 }
 
